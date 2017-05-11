@@ -54,16 +54,15 @@ impl Encoder for CommandCodec {
     type Error = io::Error;
 
     fn encode(&mut self, message: ConfigMessage, buf: &mut BytesMut) -> Result<(), Self::Error> {
-        match serde_json::to_string(&message) {//.map(|s| s.into_bytes()).unwrap_or(vec!()); 
+        match serde_json::to_string(&message) { 
         Ok(data) => {
             trace!("encoded message: {}", data);
             let buflen = buf.remaining_mut();
             if buflen < data.len()+1 {
                 buf.extend(repeat(0).take(1+data.len() - buflen));
             }
-            let written = buf.put(&data[..]);
+            buf.put(&data[..]);
             buf.put(0u8);
-            trace!("written: {:?}", written);
             trace!("buffer content: {:?}", from_utf8(&buf[..]));
             Ok(()) },
         Err(e) => Err(io::Error::new(io::ErrorKind::Other, format!("serialization error: {:?}", e)))
@@ -112,19 +111,13 @@ impl SozuCommandClient {
         let tr2 = self.transport.clone();
 
         if let Ok(mut transport) = self.transport.lock() {
-            trace!("lock");
             let id = message.id.clone();
-            trace!("calling start_send");
             let res = transport.upstream.start_send(message);
-            //.and_then(|_| transport.upstream.poll_complete());
+            trace!("start_send result: {:?}", res);
 
-            trace!("sent message, res {:?}", res);
-            //let fut = transport.upstream.send(message);
             Box::new(future::poll_fn(move || {
-                trace!("poll complete?");
                 if let Ok(mut transport) = tr2.try_lock() {
                     let res = transport.upstream.poll_complete();
-                    trace!("poll complete res: {:?}", res);
                     res
                 } else {
                     Err(Error::new(ErrorKind::ConnectionAborted, format!("could not send message")))
