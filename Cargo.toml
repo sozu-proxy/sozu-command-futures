@@ -1,0 +1,15 @@
+[package]
+name = "sozu-command-futures"
+version = "0.1.0"
+authors = ["Geoffroy Couprie <geo.couprie@gmail.com>"]
+
+[dependencies]
+nom = "^2.2"
+bytes = "^0.4"
+futures = "^0.1"
+tokio-io = "^0.1"
+tokio-uds = "^0.1"
+serde = "^1.0.2"
+serde_json = "^1.0.1"
+serde_derive = "^1.0.2"
+sozu-command-lib = {git = "https://github.com/sozu-proxy/sozu" } #"^0.2"
