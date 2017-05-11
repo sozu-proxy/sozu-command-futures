@@ -21,15 +21,18 @@ fn main() {
     let stream = UnixStream::connect("/Users/geal/dev/rust/projects/yxorp/bin/sock",  &handle).unwrap();
     let mut client = SozuCommandClient::new(stream);
 
-    println!("res: {:?}", core.run(
-        client.send(ConfigMessage::new(
-            String::from("message-id-42"),
-            ConfigCommand::ListWorkers,
-            None,
-        )).and_then(|answer| {
-            info!("received answer: {:?}", answer);
-            Ok(())
-        })
-    ).unwrap())
+    core.run(
+        Box::new(futures::future::lazy( || {
+            client.send(ConfigMessage::new(
+                String::from("message-id-42"),
+                ConfigCommand::ListWorkers,
+                None,
+            )).and_then(|answer| {
+                info!("received answer: {:?}", answer);
+                Ok(())
+            })
+        }))
+
+    ).unwrap()
 }
 

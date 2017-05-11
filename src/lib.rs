@@ -58,10 +58,11 @@ impl Encoder for CommandCodec {
         Ok(data) => {
             trace!("encoded message: {}", data);
             let buflen = buf.remaining_mut();
-            if buflen < data.len() {
-                buf.extend(repeat(0).take(data.len() - buflen));
+            if buflen < data.len()+1 {
+                buf.extend(repeat(0).take(1+data.len() - buflen));
             }
             let written = buf.put(&data[..]);
+            buf.put(0u8);
             trace!("written: {:?}", written);
             trace!("buffer content: {:?}", from_utf8(&buf[..]));
             Ok(()) },
@@ -107,65 +108,76 @@ impl SozuCommandClient {
 
     pub fn send(&mut self, message: ConfigMessage)  -> Box<Future<Item = ConfigMessageAnswer, Error = io::Error>> {
         trace!("will send message: {:?}", message);
-        let tr = self.transport.clone();
+        let tr  = self.transport.clone();
+        let tr2 = self.transport.clone();
 
         if let Ok(mut transport) = self.transport.lock() {
             trace!("lock");
             let id = message.id.clone();
             trace!("calling start_send");
-            let res = transport.upstream.start_send(message).and_then(|_| transport.upstream.poll_complete());
-            //trace!("start_send result: {:?}", res);
+            let res = transport.upstream.start_send(message);
+            //.and_then(|_| transport.upstream.poll_complete());
 
-            //let res = transport.upstream.poll_complete();
             trace!("sent message, res {:?}", res);
-
+            //let fut = transport.upstream.send(message);
             Box::new(future::poll_fn(move || {
-                trace!("polling for id = {}", id);
-                if let Ok(mut transport) = tr.try_lock() {
-                    if let Some(message) = transport.received.remove(&id) {
-                        if message.status == ConfigMessageStatus::Processing {
-                            info!("processing: {:?}", message);
-                        } else {
-                            return Ok(Async::Ready(message))
-                        }
-                    }
-
-                    let value = match transport.upstream.poll() {
-                        Ok(Async::Ready(t)) => t,
-                        Ok(Async::NotReady) => {
-                            trace!("upstream poll gave NotReady");
-                            return Ok(Async::NotReady);
-                        },
-                        Err(e) => {
-                            trace!("upstream poll gave error: {:?}", e);
-                            return Err(From::from(e));
-                        },
-                    };
-
-                    if let Some(message) = value {
-                        trace!("upstream poll gave message: {:?}", message);
-                        if message.id != id {
-                            transport.received.insert(message.id.clone(), message);
-                            Ok(Async::NotReady)
-                        } else {
+                trace!("poll complete?");
+                if let Ok(mut transport) = tr2.try_lock() {
+                    let res = transport.upstream.poll_complete();
+                    trace!("poll complete res: {:?}", res);
+                    res
+                } else {
+                    Err(Error::new(ErrorKind::ConnectionAborted, format!("could not send message")))
+                }
+            }).and_then(|_| {
+                future::poll_fn(move || {
+                    trace!("polling for id = {}", id);
+                    if let Ok(mut transport) = tr.try_lock() {
+                        if let Some(message) = transport.received.remove(&id) {
                             if message.status == ConfigMessageStatus::Processing {
                                 info!("processing: {:?}", message);
-                                Ok(Async::NotReady)
                             } else {
-                                Ok(Async::Ready(message))
+                                return Ok(Async::Ready(message))
                             }
                         }
-                    } else {
-                        trace!("upstream poll gave Ready(None)");
-                        Ok(Async::NotReady)
-                    }
-                } else {
-                    //FIXME: if we're there, it means the mutex failed
-                    Err(
-                        Error::new(ErrorKind::ConnectionAborted, format!("could not send message"))
-                    )
-                }
 
+                        let value = match transport.upstream.poll() {
+                            Ok(Async::Ready(t)) => t,
+                            Ok(Async::NotReady) => {
+                                trace!("upstream poll gave NotReady");
+                                return Ok(Async::NotReady);
+                            },
+                            Err(e) => {
+                                trace!("upstream poll gave error: {:?}", e);
+                                return Err(From::from(e));
+                            },
+                        };
+
+                        if let Some(message) = value {
+                            trace!("upstream poll gave message: {:?}", message);
+                            if message.id != id {
+                                transport.received.insert(message.id.clone(), message);
+                                Ok(Async::NotReady)
+                            } else {
+                                if message.status == ConfigMessageStatus::Processing {
+                                    info!("processing: {:?}", message);
+                                    Ok(Async::NotReady)
+                                } else {
+                                    Ok(Async::Ready(message))
+                                }
+                            }
+                        } else {
+                            trace!("upstream poll gave Ready(None)");
+                            Ok(Async::NotReady)
+                        }
+                    } else {
+                        //FIXME: if we're there, it means the mutex failed
+                        Err(
+                            Error::new(ErrorKind::ConnectionAborted, format!("could not send message"))
+                        )
+                    }
+
+                })
             }))
         
         } else {
