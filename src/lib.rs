@@ -33,7 +33,7 @@ impl Decoder for CommandCodec {
 
     fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<ConfigMessageAnswer>, io::Error> {
         if let Some(pos) = (&buf[..]).iter().position(|&x| x == 0) {
-            if let Ok(s) = from_utf8(&buf[..pos]) {
+            let res = if let Ok(s) = from_utf8(&buf[..pos]) {
                 match serde_json::from_str(s) {
                     Ok(message) => Ok(Some(message)),
                     Err(e) => {
@@ -42,7 +42,10 @@ impl Decoder for CommandCodec {
                 }
             } else {
                 Err(io::Error::new(io::ErrorKind::InvalidData, String::from("could not parse UTF-8 data")))
-            }
+            };
+
+            buf.split_to(pos+1);
+            res
         } else {
             Ok(None)
         }
@@ -76,15 +79,6 @@ pub struct SozuCommandTransport {
 }
 
 impl SozuCommandTransport {
-    /*pub fn connect<P>(path: P, handle: u32) -> Result<SozuCommandTransport,io::Error>
-        where P: AsRef<Path> {
-            UnixStream::connect(path,  &handle).map(|stream| {
-                SozuCommandTransport {
-                    upstream: stream.framed(CommandCodec),
-                }
-            })
-    }*/
-
     pub fn new(stream: UnixStream) -> SozuCommandTransport {
         SozuCommandTransport {
             upstream: stream.framed(CommandCodec),
