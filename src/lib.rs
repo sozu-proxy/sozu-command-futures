@@ -1,6 +1,5 @@
 #[macro_use] extern crate log;
-#[macro_use] extern crate futures;
-#[macro_use] extern crate serde_derive;
+extern crate futures;
 extern crate tokio_io;
 extern crate tokio_uds;
 extern crate bytes;
@@ -9,21 +8,16 @@ extern crate serde;
 extern crate serde_json;
 extern crate sozu_command_lib as sozu_command;
 
-use bytes::{BufMut,BytesMut};
-use std::iter::repeat;
-use std::path::Path;
+use bytes::BytesMut;
 use std::io::{self, Error, ErrorKind};
-use std::time::Duration;
 use std::sync::{Arc,Mutex};
 use std::collections::hash_map::HashMap;
-use std::collections::hash_set::HashSet;
-use futures::{Async, Poll, Sink, Stream, StartSend, Future, future};
+use futures::{Async, Sink, Stream, Future, future};
 use tokio_uds::UnixStream;
-use tokio_io::{AsyncRead, AsyncWrite};
+use tokio_io::AsyncRead;
 use tokio_io::codec::{Decoder, Encoder, Framed};
 use std::str::from_utf8;
-use sozu_command::Order;
-use sozu_command::data::{ConfigCommand,ConfigMessage,ConfigMessageAnswer,ConfigMessageStatus};
+use sozu_command::data::{ConfigMessage,ConfigMessageAnswer,ConfigMessageStatus};
 
 pub struct CommandCodec;
 
@@ -63,7 +57,6 @@ impl Encoder for CommandCodec {
         match serde_json::to_string(&message) {
         Ok(data) => {
             trace!("encoded message: {}", data);
-            let buflen = buf.remaining_mut();
             buf.extend(data.as_bytes());
             buf.extend(&[0u8][..]);
             trace!("buffer content: {:?}", from_utf8(&buf[..]));
