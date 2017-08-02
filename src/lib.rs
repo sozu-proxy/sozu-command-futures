@@ -44,7 +44,10 @@ impl Decoder for CommandCodec {
                 Err(io::Error::new(io::ErrorKind::InvalidData, String::from("could not parse UTF-8 data")))
             };
 
-            buf.split_to(pos+1);
+            if pos < buf.len() {
+              buf.split_to(pos+1);
+            }
+
             res
         } else {
             Ok(None)
@@ -57,15 +60,12 @@ impl Encoder for CommandCodec {
     type Error = io::Error;
 
     fn encode(&mut self, message: ConfigMessage, buf: &mut BytesMut) -> Result<(), Self::Error> {
-        match serde_json::to_string(&message) { 
+        match serde_json::to_string(&message) {
         Ok(data) => {
             trace!("encoded message: {}", data);
             let buflen = buf.remaining_mut();
-            if buflen < data.len()+1 {
-                buf.extend(repeat(0).take(1+data.len() - buflen));
-            }
-            buf.put(&data[..]);
-            buf.put(0u8);
+            buf.extend(data.as_bytes());
+            buf.extend(&[0u8][..]);
             trace!("buffer content: {:?}", from_utf8(&buf[..]));
             Ok(()) },
         Err(e) => Err(io::Error::new(io::ErrorKind::Other, format!("serialization error: {:?}", e)))
@@ -166,7 +166,6 @@ impl SozuCommandClient {
 
                 })
             }))
-        
         } else {
             //FIXME: if we're there, it means the mutex failed
             Box::new(future::err(
